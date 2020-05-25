@@ -1,0 +1,65 @@
+---
+ - hosts: all
+   name: Install python3 Package if not installled on similar linux machine
+   become: yes
+   gather_facts: false
+   vars:
+    - py_pkg_ver: 3.6.0
+    - python_package: Python-3.6.0.tar.xz
+    - python_url: https://www.python.org/ftp/python/{{ py_pkg_ver }}/{{ python_package }}
+   tasks:
+     - name: check package installed or not
+       stat:
+        path: /usr/bin/python3.6
+       register: python_result
+     - block:
+       - name: Install pre-requisite packages
+         yum:
+          name:
+          - gcc
+          - zlib-devel
+          - bzip2-devel
+          - sqlite
+          - sqlite-devel
+          - openssl-devel
+          - libselinux-python
+          state: present
+       - name: copy from server
+         get_url:
+           url: "{{ python_url }}"
+           dest: /tmp/
+       - name: Unarchive python3 package
+         unarchive:
+          remote_src: yes
+          src: "/tmp/{{ python_package }}"
+          dest: /tmp/
+       - name: Create python3 installation directory
+         file:
+          path: /usr/local/python3
+          state: directory
+       - name: Compile python3
+         command: "./configure --enable-optimization --prefix=/usr/local/python3"
+         args:
+          chdir: "/tmp/Python-{{ py_pkg_ver }}"
+         register: python3_compile
+       - name: Install python3
+         shell: "make altinstall"
+         args:
+          chdir: "/tmp/Python-{{ py_pkg_ver }}"
+         when: python3_compile is changed
+         register: python3_install
+       - name: Link to python binary /usr/bin/python3.6
+         file:
+          src: /usr/local/python3/bin/python3.6
+          dest: /usr/bin/python3.6
+          state: link
+         when: python3_install is changed
+       - name: Clean up
+         file:
+          path: "{{ item }}"
+          state: absent
+         with_items:
+          - "/tmp/Python-{{ py_pkg_ver }}"
+          - "/tmp/{{ python_package }}"
+       when: python_result.stat.exists == false
+
